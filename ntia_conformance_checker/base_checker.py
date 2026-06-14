@@ -304,31 +304,27 @@ class BaseChecker(ABC):
 
         # SPDX 3
         if self.sbom_spec == "spdx3":
-            # We will assume here that the SpdxDocument's rootElement is
-            # either /Core/Bom or /Software/Sbom.
-            #
-            # If the rootElement is a /Software/Package
-            # (or its subclass),
-            # it is considered to have a DESCRIBES relationship.
-            #
-            # Note that if there is neither /Software/Package(s) nor /Core/Bom,
-            # a DESCRIBES relationship is not needed;
-            # however, this method may still return False,
-            # since it is factually considered as "no relationship".
-            #
-            # See https://github.com/spdx/ntia-conformance-checker/issues/392
-            # for discussion on dependency relationships and DESCRIBES.
+            self.doc = cast("spdx3.SHACLObjectSet", self.doc)
 
-            # There is a BOM/SBOM and an /Software/Package,
-            # check if there is at least one package listed in any BOM/SBOM
-            boms = get_boms_from_spdx_document(self.__spdx3_doc)
-            if boms:
-                for bom in boms:
-                    packages = get_packages_from_bom(bom)
-                    if packages:
-                        return True
+            # Get all "dependsOn" relationships in the document
+            dependency_generator = iter_relationships_by_type(self.doc, "dependsOn")
+            all_dependencies = list(dependency_generator)
+            if not all_dependencies:
+                return False
 
-        return False
+            # A set of all spdxIds in the document for quick lookup
+            all_spdxIds = {
+                spdx_id
+                for _, spdx_id, _ in iter_objects_with_property(self.doc, spdx3.Element, "spdxId")
+                if spdx_id
+            }
+
+            # Check that all "dependsOn" relationships point to valid spdxIds in the document
+            for from_id, to_id in all_dependencies:
+                if to_id not in all_spdxIds:
+                    return False
+
+        return True
 
     def check_timestamp(self) -> bool:
         """Check if the SBOM creation timestamp exists."""
